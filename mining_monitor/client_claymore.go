@@ -1,4 +1,4 @@
-package ethos_monitor
+package mining_monitor
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -14,13 +15,26 @@ const (
 )
 
 type ClaymoreClient struct {
-	addr     string
-	password string
-	version  float64
+	addr         string
+	password     string
+	version      float64
+	readOnly     bool
+	failOnWrites bool
+
+	ps PowerService
 }
 
 func NewClaymoreClient(addr, password string, version float64) Client {
 	return &ClaymoreClient{addr: addr, password: password, version: version}
+}
+
+func NewClaymoreClientWithPowerService(addr, password string, version float64, ps PowerService) Client {
+	return &ClaymoreClient{addr: addr, password: password, version: version, ps: ps}
+}
+
+func (c *ClaymoreClient) SetReadOnly(readOnly, failOnWrites bool) {
+	c.readOnly = readOnly
+	c.failOnWrites = failOnWrites
 }
 
 type claymoreRequest struct {
@@ -205,6 +219,12 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 }
 
 func (c *ClaymoreClient) Reboot() error {
+	if c.readOnly {
+		if c.failOnWrites {
+			return fmt.Errorf("client is read only")
+		}
+		return nil
+	}
 	if c.password == "" {
 		return fmt.Errorf("remote console does not have a password set and is insecure, " +
 			"please set a password to use this functionality")
@@ -217,6 +237,12 @@ func (c *ClaymoreClient) Reboot() error {
 }
 
 func (c *ClaymoreClient) Restart() error {
+	if c.readOnly {
+		if c.failOnWrites {
+			return fmt.Errorf("client is read only")
+		}
+		return nil
+	}
 	if c.password == "" {
 		return fmt.Errorf("remote console does not have a password set and is insecure, " +
 			"please set a password to use this functionality")
@@ -225,8 +251,44 @@ func (c *ClaymoreClient) Restart() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("miner rebooted")
 	return nil
+}
+
+func (c *ClaymoreClient) PowerCycleEnabled() bool {
+	return c.ps != nil
+}
+
+func (c *ClaymoreClient) PowerCycle() error {
+	return nil
+	if c.readOnly {
+		if c.failOnWrites {
+			return fmt.Errorf("client is read only")
+		}
+		return nil
+	}
+	if c.ps == nil {
+		return fmt.Errorf("power cycle not enabled on this client, no power service available")
+	}
+	state, err := c.ps.State()
+	if err != nil {
+		return err
+	}
+
+	if state.On {
+		if err := c.ps.Off(); err != nil {
+			return fmt.Errorf("failed to turn power off: %s", err)
+		}
+		time.Sleep(10 * time.Second)
+	}
+
+	if err := c.ps.On(); err != nil {
+		return fmt.Errorf("failed to turn power on: %s", err)
+	}
+	return nil
+}
+
+func (c *ClaymoreClient) ReadOnly() bool {
+	return c.readOnly
 }
 
 func (c *ClaymoreClient) IP() string {

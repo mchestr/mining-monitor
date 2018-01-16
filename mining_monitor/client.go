@@ -1,10 +1,16 @@
-package ethos_monitor
+package mining_monitor
 
 type Client interface {
 	IP() string
 	Stats() (*Statistics, error)
 	Reboot() error
 	Restart() error
+
+	PowerCycleEnabled() bool
+	PowerCycle() error
+
+	SetReadOnly(readOnly, failOnWrites bool)
+	ReadOnly() bool
 }
 
 type Statistics struct {
