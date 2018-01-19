@@ -1,6 +1,6 @@
 package mining_monitor
 
-import "log"
+import "github.com/golang/glog"
 
 const (
 	LogType = iota
@@ -46,6 +46,13 @@ func NewEventServiceWithEmail(es EmailService) *EventService {
 	}
 }
 
+func NewEventService() *EventService {
+	return &EventService{
+		E:    make(chan Event, 100),
+		stop: make(chan bool, 1),
+	}
+}
+
 func (es *EventService) Start() {
 	for {
 		select {
@@ -53,25 +60,25 @@ func (es *EventService) Start() {
 			switch event.Type {
 			case LogType:
 				es.logs = append(es.logs, event.Message)
-				log.Printf("[%s]: %s", event.Client.IP(), event.Message)
+				glog.Infof("[%s]: %s", event.Client.IP(), event.Message)
 			case ErrorType:
 				es.errors = append(es.errors, event.Error)
-				log.Printf("[%s] Error: %s", event.Client.IP(), event.Error)
+				glog.Infof("[%s] Error: %s", event.Client.IP(), event.Error)
 			case EmailType:
 				if es.EmailService == nil {
-					log.Printf("email service not initialized, no email sent")
+					glog.Infof("email service not initialized, no email sent")
 				} else {
 					if err := es.EmailService.SendEmail(event.Subject, event.Message); err != nil {
-						log.Printf("unable to send email: %s", err)
+						glog.Infof("unable to send email: %s", err)
 					} else {
-						log.Printf("[%s]: successfully sent email", event.Client.IP())
+						glog.Infof("[%s]: successfully sent email", event.Client.IP())
 					}
 				}
 			default:
-				log.Printf("[%s]: unknown event recieved %+v", event.Client.IP(), event)
+				glog.Infof("[%s]: unknown event recieved %+v", event.Client.IP(), event)
 			}
 		case <-es.stop:
-			log.Printf("Event Service stopped")
+			glog.Infof("Event Service stopped")
 			return
 		}
 	}

@@ -10,10 +10,16 @@ import (
 
 const (
 	hs110plugRelayStateJsonPath = "$.system.get_sysinfo.relay_state"
+	hs110plugPowerJsonPath      = "$.emeter.get_realtime.power"
 )
 
 type PowerState struct {
-	On bool
+	On    bool
+	Power float64
+}
+
+func (p PowerState) String() string {
+	return fmt.Sprintf("{On: %t, Power: %0.2f}", p.On, p.Power)
 }
 
 type PowerService interface {
@@ -44,7 +50,7 @@ func (h *HS110PowerService) On() error {
 }
 
 func (h *HS110PowerService) State() (*PowerState, error) {
-	info, err := h.c.SystemInfo()
+	info, err := h.c.MeterInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -58,5 +64,10 @@ func (h *HS110PowerService) State() (*PowerState, error) {
 		return nil, fmt.Errorf("unable to get relay_state from %s", info)
 	}
 	state := int(res.(float64))
-	return &PowerState{On: state == 1}, nil
+	res, err = jsonpath.JsonPathLookup(data, hs110plugPowerJsonPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get power from %s", info)
+	}
+	power := res.(float64)
+	return &PowerState{On: state == 1, Power: power}, nil
 }

@@ -3,6 +3,8 @@ package mining_monitor
 import (
 	"fmt"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 type ClientMonitorConfig struct {
@@ -33,25 +35,17 @@ type ClientMonitoring struct {
 
 type Monitor struct {
 	c            []ClientMonitoring
-	EmailService EmailService
 	EventService *EventService
 
 	stop     chan bool
 	interval time.Duration
-}
-
-func NewMonitorWithEmail(eventService *EventService, emailService EmailService) *Monitor {
-	m := NewMonitor(eventService)
-	m.EmailService = emailService
-	return m
+	state    int
 }
 
 func NewMonitor(eventService *EventService) *Monitor {
 	return &Monitor{
 		c:            []ClientMonitoring{},
 		EventService: eventService,
-
-		stop: make(chan bool, 10),
 	}
 }
 
@@ -60,6 +54,11 @@ func (m *Monitor) AddClient(c Client, config *ClientMonitorConfig) {
 }
 
 func (m *Monitor) Start() error {
+	if m.state == RUNNING {
+		return fmt.Errorf("monitor already running")
+	}
+	m.stop = make(chan bool, len(m.c))
+	m.state = RUNNING
 	for _, c := range m.c {
 		m.EventService.E <- NewLogEvent(c.C, "starting monitoring...")
 		go m.monitorClient(m.stop, c.C, c.Config)
@@ -69,17 +68,22 @@ func (m *Monitor) Start() error {
 }
 
 func (m *Monitor) Stop() error {
+	if m.state == STOPPED {
+		return fmt.Errorf("monitor already stopped")
+	}
 	for i := 0; i < len(m.c); i++ {
 		m.stop <- true
 	}
 	m.EventService.Stop()
+	m.state = STOPPED
+	close(m.stop)
 	return nil
 }
 
 func (m *Monitor) monitorClient(stop chan bool, c Client, config *ClientMonitorConfig) {
 	m.EventService.E <- NewLogEvent(c,
-		fmt.Sprintf("Monitor Starting\tPowerCycle: %t\tReadOnly: %t\tCheckFailsBeforeReboot: %d\t RebootFailsBeforePowercycle: %d\tRebootInterval: %v\tStatsInterval: %v\tStateInterval: %v",
-			c.PowerCycleEnabled(), c.ReadOnly(), config.CheckFailsBeforeReboot, config.RebootFailsBeforePowerCycle, config.RebootInterval, config.StatsInterval, config.StateInterval),
+		fmt.Sprintf("Monitor Starting\tThresholds: %s\tPowerCycle: %t\tReadOnly: %t\tCheckFailsBeforeReboot: %d\t RebootFailsBeforePowercycle: %d\tRebootInterval: %v\tStatsInterval: %v\tStateInterval: %v",
+			config.Thresholds, c.PowerCycleEnabled(), c.ReadOnly(), config.CheckFailsBeforeReboot, config.RebootFailsBeforePowerCycle, config.RebootInterval, config.StatsInterval, config.StateInterval),
 	)
 	stateTicker := time.NewTicker(config.StateInterval)
 	statsTicker := time.NewTicker(config.StatsInterval)
@@ -94,6 +98,7 @@ func (m *Monitor) monitorClient(stop chan bool, c Client, config *ClientMonitorC
 	for {
 		select {
 		case <-stateTicker.C:
+			glog.V(1).Infof("State: {failedReboots: %d, failedChecks: %d}", failedReboots, failedChecks)
 			if reset {
 				failedReboots = 0
 				failedChecks = 0
@@ -122,22 +127,36 @@ func (m *Monitor) monitorClient(stop chan bool, c Client, config *ClientMonitorC
 				stats, err := c.Stats()
 				if err != nil {
 					m.EventService.E <- NewErrorEvent(c, err)
-					failedChecks++
 				} else {
-					var currentErrors []error
+					var rebootErrors []error
+					var emailErrors []error
 					for _, t := range config.Thresholds {
 						thresholdErrors := t.Check(stats)
 						if thresholdErrors != nil && len(thresholdErrors) > 0 {
-							currentErrors = append(currentErrors, thresholdErrors...)
+							if t.SendEmail {
+								emailErrors = append(emailErrors, thresholdErrors...)
+							}
+							if t.CauseReboot {
+								rebootErrors = append(rebootErrors, thresholdErrors...)
+							}
 						}
 					}
-					if len(currentErrors) > 0 {
-						for _, err := range currentErrors {
+					if len(rebootErrors) > 0 {
+						for _, err := range rebootErrors {
 							m.EventService.E <- NewErrorEvent(c, err)
 							errors = append(errors, err)
 						}
 						failedChecks++
-					} else {
+					}
+					if len(emailErrors) > 0 {
+						body := ""
+						for _, err := range emailErrors {
+							m.EventService.E <- NewErrorEvent(c, err)
+							body += err.Error() + "\n\r"
+						}
+						m.EventService.E <- NewEmailEvent(c, "Thresholds Exceeded!", body)
+					}
+					if len(rebootErrors) == 0 && len(emailErrors) == 0 {
 						reset = true
 					}
 				}

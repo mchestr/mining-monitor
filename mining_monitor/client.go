@@ -40,4 +40,6 @@ type Statistics struct {
 	AltGpuInvalidShares  []int
 	AltPoolSwitches      int
 	AltInvalidShares     int
+
+	PowerState *PowerState
 }

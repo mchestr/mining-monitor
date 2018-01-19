@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -150,18 +152,16 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	}
 	stats.MainGpuHashRate = ethHashRates
 	altInfo, err := parseFloatFromSeparatedString(resp.Result[4], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse altcoin info from %s: %s", resp.Result[4], err)
+	if err == nil {
+		stats.AltHashRate = altInfo[0]
+		stats.AltShares = int(altInfo[1])
+		stats.AltRejectedShares = int(altInfo[2])
 	}
-	stats.AltHashRate = altInfo[0]
-	stats.AltShares = int(altInfo[1])
-	stats.AltRejectedShares = int(altInfo[2])
 
 	altHashRates, err := parseFloatFromSeparatedString(resp.Result[5], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu alt hashrates from %s: %s", resp.Result[5], err)
+	if err == nil {
+		stats.AltGpuHashRate = altHashRates
 	}
-	stats.AltGpuHashRate = altHashRates
 
 	gpuInfo := strings.Split(resp.Result[6], ";")
 	for i := 0; i < len(gpuInfo); i += 2 {
@@ -215,6 +215,14 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 		return nil, fmt.Errorf("failed to parse gpu alt invalid from %s: %s", resp.Result[14], err)
 	}
 	stats.AltGpuInvalidShares = gpuAltInvalid
+	if c.ps != nil {
+		powerStats, err := c.ps.State()
+		if err != nil {
+			return nil, err
+		}
+		stats.PowerState = powerStats
+	}
+	glog.V(3).Infof("[%s] Stats: %+v", c.IP(), stats)
 	return stats, nil
 }
 
@@ -259,7 +267,6 @@ func (c *ClaymoreClient) PowerCycleEnabled() bool {
 }
 
 func (c *ClaymoreClient) PowerCycle() error {
-	return nil
 	if c.readOnly {
 		if c.failOnWrites {
 			return fmt.Errorf("client is read only")

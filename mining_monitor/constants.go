@@ -4,4 +4,5 @@ const (
 	POWERCYCLING = iota
 	RUNNING
 	REBOOTING
+	STOPPED
 )
