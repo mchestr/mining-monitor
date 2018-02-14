@@ -61,7 +61,7 @@ type Threshold struct {
 }
 
 func (t Threshold) String() string {
-	return fmt.Sprintf("%s: %s", t.Name, t.Threshold)
+	return fmt.Sprintf("%s: %s - [Cause Reboot? %t, Send Email? %t]", t.Name, t.Threshold, t.CauseReboot, t.SendEmail)
 }
 
 func NewHashRateThreshold(threshold string, causeReboot, sendEmail bool) (*Threshold, error) {

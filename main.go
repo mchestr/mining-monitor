@@ -16,11 +16,12 @@ import (
 
 var (
 	debug                  = flag.Bool("debug", false, "Used for debugging to set clients to READONLY mode")
-	checkFailsBeforeReboot = flag.Int("check-fails", 2, "Number of failed checks before reboot, default 2")
-	rebootFailsBeforePower = flag.Int("reboot-fails", 2, "Number of reboot fails before we toggle power on and off")
+	checkFailsBeforeReboot = flag.Int("check-fails", 3, "Number of failed checks before reboot, default 2")
+	rebootFailsBeforePower = flag.Int("reboot-fails", 3, "Number of reboot fails before we toggle power on and off")
 	statsInterval          = flag.Duration("stats-interval", 30*time.Second, "Interval to poll for statistics")
 	stateInterval          = flag.Duration("state-interval", 3*time.Second, "Time in seconds to transition monitoring states")
 	rebootInterval         = flag.Duration("reboot-interval", 5*time.Minute, "Time between successful reboots before attempting another")
+	powerCycleOnly         = flag.Bool("power-cycle-only", false, "Whether or not to skip trying to reboot with claymore and powercycle instead")
 
 	claymoreAddress  = flag.String("claymore-address", "", "Address for claymore remote management interface")
 	claymorePassword = flag.String("claymore-password", "", "Password for claymore remote management interface")
@@ -78,7 +79,7 @@ func main() {
 		thresholds = append(thresholds, powerThreshold)
 	}
 	if *temperatureThreshold != "" {
-		tempThreshold, err := mining_monitor.NewTemperatureThreshold(*temperatureThreshold, false, true)
+		tempThreshold, err := mining_monitor.NewTemperatureThreshold(*temperatureThreshold, true, true)
 		if err != nil {
 			panic(err)
 		}
@@ -93,7 +94,7 @@ func main() {
 	}
 	m.AddClient(c, mining_monitor.NewClientMonitorConfig(
 		thresholds, *checkFailsBeforeReboot, *rebootFailsBeforePower,
-		*rebootInterval, *statsInterval, *stateInterval,
+		*rebootInterval, *statsInterval, *stateInterval, *powerCycleOnly,
 	))
 
 	m.Start()

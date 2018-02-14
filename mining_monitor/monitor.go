@@ -14,10 +14,11 @@ type ClientMonitorConfig struct {
 	RebootInterval              time.Duration
 	StatsInterval               time.Duration
 	StateInterval               time.Duration
+	PowerCycleOnly              bool
 }
 
 func NewClientMonitorConfig(thresholds []*Threshold, checkFailsBeforeReboot, rebootFailsBeforePowerCycle int,
-	rebootInterval, statsInterval, stateInterval time.Duration) *ClientMonitorConfig {
+	rebootInterval, statsInterval, stateInterval time.Duration, powerCycleOnly bool) *ClientMonitorConfig {
 	return &ClientMonitorConfig{
 		Thresholds:                  thresholds,
 		CheckFailsBeforeReboot:      checkFailsBeforeReboot,
@@ -25,6 +26,7 @@ func NewClientMonitorConfig(thresholds []*Threshold, checkFailsBeforeReboot, reb
 		RebootInterval:              rebootInterval,
 		StatsInterval:               statsInterval,
 		StateInterval:               stateInterval,
+		PowerCycleOnly:              powerCycleOnly,
 	}
 }
 
@@ -82,8 +84,8 @@ func (m *Monitor) Stop() error {
 
 func (m *Monitor) monitorClient(stop chan bool, c Client, config *ClientMonitorConfig) {
 	m.EventService.E <- NewLogEvent(c,
-		fmt.Sprintf("Monitor Starting\tThresholds: %s\tPowerCycle: %t\tReadOnly: %t\tCheckFailsBeforeReboot: %d\t RebootFailsBeforePowercycle: %d\tRebootInterval: %v\tStatsInterval: %v\tStateInterval: %v",
-			config.Thresholds, c.PowerCycleEnabled(), c.ReadOnly(), config.CheckFailsBeforeReboot, config.RebootFailsBeforePowerCycle, config.RebootInterval, config.StatsInterval, config.StateInterval),
+		fmt.Sprintf("Monitor Starting on %s\nPower Cycle Only: %t\nThresholds: %s\nPowerCycle: %t\nReadOnly: %t\nCheckFailsBeforeReboot: %d\nRebootFailsBeforePowercycle: %d\nRebootInterval: %v\nStatsInterval: %v\nStateInterval: %v",
+			c.IP(), config.PowerCycleOnly, config.Thresholds, c.PowerCycleEnabled(), c.ReadOnly(), config.CheckFailsBeforeReboot, config.RebootFailsBeforePowerCycle, config.RebootInterval, config.StatsInterval, config.StateInterval),
 	)
 	stateTicker := time.NewTicker(config.StateInterval)
 	statsTicker := time.NewTicker(config.StatsInterval)
@@ -105,12 +107,13 @@ func (m *Monitor) monitorClient(stop chan bool, c Client, config *ClientMonitorC
 				errors = []error{}
 				reset = false
 			}
-			if c.PowerCycleEnabled() && failedReboots > config.RebootFailsBeforePowerCycle {
+			// If client has power cycling enabled and number of failed reboots is greater than threshold OR power cycle only enabled and failed checks greater than threshold and last reboot is longer than threshold
+			if c.PowerCycleEnabled() && (failedReboots >= config.RebootFailsBeforePowerCycle || config.PowerCycleOnly && failedChecks >= config.CheckFailsBeforeReboot && time.Now().Sub(lastReboot) > config.RebootInterval) {
 				if state != POWERCYCLING {
 					m.EventService.E <- NewLogEvent(c, "transitioning to POWERCYCLING state...")
 				}
 				state = POWERCYCLING
-			} else if failedChecks > config.CheckFailsBeforeReboot && time.Now().Sub(lastReboot) > config.RebootInterval {
+			} else if !config.PowerCycleOnly && failedChecks >= config.CheckFailsBeforeReboot && time.Now().Sub(lastReboot) > config.RebootInterval {
 				if state != REBOOTING {
 					m.EventService.E <- NewLogEvent(c, "transitioning to REBOOTING state...")
 				}
