@@ -1,13 +1,17 @@
-package mining_monitor
+package miningmonitor
 
 import "github.com/golang/glog"
 
 const (
+	// LogType Event
 	LogType = iota
+	// ErrorType Event
 	ErrorType
+	// EmailType Event
 	EmailType
 )
 
+// Event contains information of monitoring events
 type Event struct {
 	Type   int
 	Client Client
@@ -17,18 +21,22 @@ type Event struct {
 	Error   error
 }
 
+// NewLogEvent returns a new event for logging
 func NewLogEvent(c Client, message string) Event {
 	return Event{Client: c, Type: LogType, Message: message}
 }
 
+// NewEmailEvent returns an event that will trigger an email
 func NewEmailEvent(c Client, subject, message string) Event {
 	return Event{Client: c, Type: EmailType, Subject: subject, Message: message}
 }
 
+// NewErrorEvent will return a new error event that may or may not trigger an email depending on the client configuration
 func NewErrorEvent(c Client, err error) Event {
 	return Event{Client: c, Type: ErrorType, Error: err}
 }
 
+// EventService used to handle events within the monitoring services
 type EventService struct {
 	E            chan Event
 	EmailService EmailService
@@ -38,6 +46,7 @@ type EventService struct {
 	stop   chan bool
 }
 
+// NewEventServiceWithEmail returns an Event Service that will send emails
 func NewEventServiceWithEmail(es EmailService) *EventService {
 	return &EventService{
 		E:            make(chan Event, 100),
@@ -46,6 +55,7 @@ func NewEventServiceWithEmail(es EmailService) *EventService {
 	}
 }
 
+// NewEventService returns an Event Service with no email
 func NewEventService() *EventService {
 	return &EventService{
 		E:    make(chan Event, 100),
@@ -53,6 +63,7 @@ func NewEventService() *EventService {
 	}
 }
 
+// Start the EventService
 func (es *EventService) Start() {
 	for {
 		select {
@@ -75,7 +86,7 @@ func (es *EventService) Start() {
 					}
 				}
 			default:
-				glog.Infof("[%s]: unknown event recieved %+v", event.Client.IP(), event)
+				glog.Infof("[%s]: unknown event received %+v", event.Client.IP(), event)
 			}
 		case <-es.stop:
 			glog.Infof("Event Service stopped")
@@ -84,6 +95,7 @@ func (es *EventService) Start() {
 	}
 }
 
+// Stop the EventService
 func (es *EventService) Stop() {
 	es.stop <- true
 }

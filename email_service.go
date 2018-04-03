@@ -1,4 +1,4 @@
-package mining_monitor
+package miningmonitor
 
 import (
 	"fmt"
@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
+// EmailService interface used to send emails on events
 type EmailService interface {
 	SendEmail(subject, body string) error
 
 	SetMaxEmails(max int, interval time.Duration)
 }
 
+// GMailService struct that implements EmailService for GMail specifically
 type GMailService struct {
 	host     string
 	username string
@@ -28,6 +30,7 @@ type GMailService struct {
 	lastSent time.Time
 }
 
+// NewGMailService returns a new EmailService to send emails via GMail
 func NewGMailService(host, from string, to []string, username, password string, port int) EmailService {
 	return &GMailService{
 		host:     host,
@@ -42,6 +45,7 @@ func NewGMailService(host, from string, to []string, username, password string, 
 	}
 }
 
+// SendEmail of events
 func (e *GMailService) SendEmail(subject, msg string) error {
 	if e.max > 0 {
 		if time.Since(e.lastSent) > e.interval {
@@ -60,12 +64,10 @@ func (e *GMailService) SendEmail(subject, msg string) error {
 		strings.Join(e.to, ","), subject, msg,
 	)
 	auth := smtp.PlainAuth("", e.from, e.password, e.host)
-	if err := smtp.SendMail(fmt.Sprintf("%s:%d", e.host, e.port), auth, e.from, e.to, []byte(body)); err != nil {
-		return err
-	}
-	return nil
+	return smtp.SendMail(fmt.Sprintf("%s:%d", e.host, e.port), auth, e.from, e.to, []byte(body))
 }
 
+// SetMaxEmails to limit the number of emails sent within an interval
 func (e *GMailService) SetMaxEmails(max int, interval time.Duration) {
 	e.max = max
 	e.interval = interval

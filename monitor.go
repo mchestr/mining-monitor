@@ -1,4 +1,4 @@
-package mining_monitor
+package miningmonitor
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"github.com/golang/glog"
 )
 
+// ClientMonitorConfig used to configure each client
 type ClientMonitorConfig struct {
 	Thresholds                  []*Threshold
 	CheckFailsBeforeReboot      int
@@ -17,6 +18,7 @@ type ClientMonitorConfig struct {
 	PowerCycleOnly              bool
 }
 
+// NewClientMonitorConfig returns a new basic client monitor config
 func NewClientMonitorConfig(thresholds []*Threshold, checkFailsBeforeReboot, rebootFailsBeforePowerCycle int,
 	rebootInterval, statsInterval, stateInterval time.Duration, powerCycleOnly bool) *ClientMonitorConfig {
 	return &ClientMonitorConfig{
@@ -30,13 +32,14 @@ func NewClientMonitorConfig(thresholds []*Threshold, checkFailsBeforeReboot, reb
 	}
 }
 
-type ClientMonitoring struct {
+type clientMonitoring struct {
 	C      Client
 	Config *ClientMonitorConfig
 }
 
+// Monitor is used to monitor multiple clients
 type Monitor struct {
-	c            []ClientMonitoring
+	c            []clientMonitoring
 	EventService *EventService
 
 	stop     chan bool
@@ -44,17 +47,20 @@ type Monitor struct {
 	state    int
 }
 
+// NewMonitor returns a new monitoring service for multiple clients.
 func NewMonitor(eventService *EventService) *Monitor {
 	return &Monitor{
-		c:            []ClientMonitoring{},
+		c:            []clientMonitoring{},
 		EventService: eventService,
 	}
 }
 
+// AddClient to be monitored along with its corresponding configuration
 func (m *Monitor) AddClient(c Client, config *ClientMonitorConfig) {
-	m.c = append(m.c, ClientMonitoring{C: c, Config: config})
+	m.c = append(m.c, clientMonitoring{C: c, Config: config})
 }
 
+// Start the monitoring service
 func (m *Monitor) Start() error {
 	if m.state == RUNNING {
 		return fmt.Errorf("monitor already running")
@@ -69,6 +75,7 @@ func (m *Monitor) Start() error {
 	return nil
 }
 
+// Stop the monitoring service
 func (m *Monitor) Stop() error {
 	if m.state == STOPPED {
 		return fmt.Errorf("monitor already stopped")

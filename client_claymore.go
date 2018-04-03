@@ -1,4 +1,4 @@
-package mining_monitor
+package miningmonitor
 
 import (
 	"encoding/json"
@@ -6,7 +6,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 )
@@ -16,6 +15,7 @@ const (
 	getStatsMethod98  = "miner_getstat1"
 )
 
+// ClaymoreClient implements Client interface
 type ClaymoreClient struct {
 	addr         string
 	password     string
@@ -26,14 +26,17 @@ type ClaymoreClient struct {
 	ps PowerService
 }
 
+// NewClaymoreClient returns a claymore client without power monitoring
 func NewClaymoreClient(addr, password string, version float64) Client {
 	return &ClaymoreClient{addr: addr, password: password, version: version}
 }
 
+// NewClaymoreClientWithPowerService returns a claymore client with power monitoring
 func NewClaymoreClientWithPowerService(addr, password string, version float64, ps PowerService) Client {
 	return &ClaymoreClient{addr: addr, password: password, version: version, ps: ps}
 }
 
+// SetReadOnly on the client
 func (c *ClaymoreClient) SetReadOnly(readOnly, failOnWrites bool) {
 	c.readOnly = readOnly
 	c.failOnWrites = failOnWrites
@@ -41,7 +44,7 @@ func (c *ClaymoreClient) SetReadOnly(readOnly, failOnWrites bool) {
 
 type claymoreRequest struct {
 	ID       int    `json:"id"`
-	JsonRpc  string `json:"jsonrpc"`
+	JSONRPC  string `json:"jsonrpc"`
 	Method   string `json:"method"`
 	Password string `json:"psw,omitempty"`
 }
@@ -55,7 +58,7 @@ type claymoreResponse struct {
 func (c *ClaymoreClient) send(method string, expectReply bool) (*claymoreResponse, error) {
 	req := &claymoreRequest{
 		ID:       0,
-		JsonRpc:  "2.0",
+		JSONRPC:  "2.0",
 		Method:   method,
 		Password: c.password,
 	}
@@ -114,6 +117,7 @@ func parseIntFromSeparatedString(s, sep string) ([]int, error) {
 	return res, nil
 }
 
+// Stats returns current stats of the client
 func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	getStatMethod := getStatsMethod98
 	if c.version >= 10.2 {
@@ -178,7 +182,7 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	}
 	miningInfo, err := parseFloatFromSeparatedString(resp.Result[8], ";")
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse mining info from %s: %s", miningInfo, err)
+		return nil, fmt.Errorf("failed to parse mining info from %s: %s", resp.Result[8], err)
 	}
 	stats.MainInvalidShares = int(miningInfo[0])
 	stats.MainPoolSwitches = int(miningInfo[1])
@@ -226,6 +230,7 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	return stats, nil
 }
 
+// Reboot the client using the remote management interface and the command `miner_reboot`
 func (c *ClaymoreClient) Reboot() error {
 	if c.readOnly {
 		if c.failOnWrites {
@@ -244,6 +249,7 @@ func (c *ClaymoreClient) Reboot() error {
 	return nil
 }
 
+// Restart the client using the remote management interface and the command `miner_restart`
 func (c *ClaymoreClient) Restart() error {
 	if c.readOnly {
 		if c.failOnWrites {
@@ -262,42 +268,31 @@ func (c *ClaymoreClient) Restart() error {
 	return nil
 }
 
+// PowerCycleEnabled bool if client has a PowerService
 func (c *ClaymoreClient) PowerCycleEnabled() bool {
 	return c.ps != nil
 }
 
+// PowerCycle the client using an external smart plug power service
 func (c *ClaymoreClient) PowerCycle() error {
-	if c.readOnly {
+	if c.ReadOnly() {
 		if c.failOnWrites {
 			return fmt.Errorf("client is read only")
 		}
 		return nil
 	}
-	if c.ps == nil {
+	if !c.PowerCycleEnabled() {
 		return fmt.Errorf("power cycle not enabled on this client, no power service available")
 	}
-	state, err := c.ps.State()
-	if err != nil {
-		return err
-	}
-
-	if state.On {
-		if err := c.ps.Off(); err != nil {
-			return fmt.Errorf("failed to turn power off: %s", err)
-		}
-		time.Sleep(10 * time.Second)
-	}
-
-	if err := c.ps.On(); err != nil {
-		return fmt.Errorf("failed to turn power on: %s", err)
-	}
-	return nil
+	return c.ps.PowerCycle()
 }
 
+// ReadOnly flag if client is in read only mode
 func (c *ClaymoreClient) ReadOnly() bool {
 	return c.readOnly
 }
 
+// IP of the client
 func (c *ClaymoreClient) IP() string {
 	return c.addr
 }

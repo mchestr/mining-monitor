@@ -11,7 +11,7 @@ import (
 	"bufio"
 
 	"github.com/golang/glog"
-	"github.com/mchestr/ethos-monitor/mining_monitor"
+	"github.com/mchestr/mining-monitor"
 )
 
 var (
@@ -32,7 +32,7 @@ var (
 	temperatureThreshold = flag.String("temp-threshold", "", "Threshold in degrees celsius for GPUs")
 	fanPercentThreshold  = flag.String("fan-threshold", ">70", "Threshold in percent for GPUs")
 
-	hs110PlugIp = flag.String("hs110plug-ip", "", "TPLink HS110 plug IP")
+	hs110PlugIP = flag.String("hs110plug-ip", "", "TPLink HS110 plug IP")
 
 	emailEnabled  = flag.Bool("email-enabled", true, "Enable/Disable email flag")
 	email         = flag.String("email", "", "Email to send from")
@@ -51,54 +51,65 @@ func main() {
 	signal.Notify(s, os.Interrupt)
 	log.SetOutput(os.Stdout)
 
-	var eventService *mining_monitor.EventService
+	// Setup EventService with or without email depending on flags
+	var eventService *miningmonitor.EventService
 	if *emailEnabled {
-		es := mining_monitor.NewGMailService(*emailHost, *email, []string{*email}, *email, *emailPassword, *emailPort)
+		es := miningmonitor.NewGMailService(*emailHost, *email, []string{*email}, *email, *emailPassword, *emailPort)
 		es.SetMaxEmails(*emailMaxInterval, *emailTimeout)
-		eventService = mining_monitor.NewEventServiceWithEmail(es)
+		eventService = miningmonitor.NewEventServiceWithEmail(es)
 	} else {
-		eventService = mining_monitor.NewEventService()
+		eventService = miningmonitor.NewEventService()
 	}
 
-	ps := mining_monitor.NewHS110PowerService(*hs110PlugIp)
-	c := mining_monitor.NewClaymoreClientWithPowerService(*claymoreAddress, *claymorePassword, *claymoreVersion, ps)
+	// Setup HS110 smart plug
+	ps := miningmonitor.NewHS110PowerService(*hs110PlugIP)
+	c := miningmonitor.NewClaymoreClientWithPowerService(*claymoreAddress, *claymorePassword, *claymoreVersion, ps)
 	c.SetReadOnly(*debug, true)
 
-	m := mining_monitor.NewMonitor(eventService)
+	// Create the monitor service
+	m := miningmonitor.NewMonitor(eventService)
 
-	hashThreshold, err := mining_monitor.NewHashRateThreshold(*hashThreshold, true, false)
+	// Create threshold for hash rate
+	hashThreshold, err := miningmonitor.NewHashRateThreshold(*hashThreshold, true, false)
 	if err != nil {
 		panic(err)
 	}
-	thresholds := []*mining_monitor.Threshold{hashThreshold}
+	thresholds := []*miningmonitor.Threshold{hashThreshold}
+
+	// Create power threshold if set in flags
 	if *powerThreshold != "" {
-		powerThreshold, err := mining_monitor.NewPowerThreshold(*powerThreshold, true, false)
+		powerThreshold, err := miningmonitor.NewPowerThreshold(*powerThreshold, true, false)
 		if err != nil {
 			panic(err)
 		}
 		thresholds = append(thresholds, powerThreshold)
 	}
+	// Create temperature threshold if set in flags
 	if *temperatureThreshold != "" {
-		tempThreshold, err := mining_monitor.NewTemperatureThreshold(*temperatureThreshold, true, true)
+		tempThreshold, err := miningmonitor.NewTemperatureThreshold(*temperatureThreshold, true, true)
 		if err != nil {
 			panic(err)
 		}
 		thresholds = append(thresholds, tempThreshold)
 	}
+	// Create fan percent threshold if set in flags
 	if *fanPercentThreshold != "" {
-		fpThreshold, err := mining_monitor.NewFanPercentThreshold(*fanPercentThreshold, true, false)
+		fpThreshold, err := miningmonitor.NewFanPercentThreshold(*fanPercentThreshold, true, false)
 		if err != nil {
 			panic(err)
 		}
 		thresholds = append(thresholds, fpThreshold)
 	}
-	m.AddClient(c, mining_monitor.NewClientMonitorConfig(
+	// Add client to monitor with given thresholds
+	m.AddClient(c, miningmonitor.NewClientMonitorConfig(
 		thresholds, *checkFailsBeforeReboot, *rebootFailsBeforePower,
 		*rebootInterval, *statsInterval, *stateInterval, *powerCycleOnly,
 	))
 
+	// start the monitor
 	m.Start()
 
+	// Start goroutine to monitor stdin of the program and take actions if keys are pressed
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
@@ -115,7 +126,7 @@ func main() {
 			case "stop", "s":
 				log.Printf("Stopping monitoring service...")
 				m.Stop()
-				log.Printf("Monitoring service stoppped")
+				log.Printf("Monitoring service stopped")
 			case "resume", "r":
 				log.Printf("Starting monitoring service...")
 				m.Start()

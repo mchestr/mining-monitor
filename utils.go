@@ -1,4 +1,4 @@
-package mining_monitor
+package miningmonitor
 
 func fmtErrors(errors []error) string {
 	msg := ""
