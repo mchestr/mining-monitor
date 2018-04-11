@@ -118,15 +118,18 @@ func parseIntFromSeparatedString(s, sep string) ([]int, error) {
 }
 
 // Stats returns current stats of the client
+//
 func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	getStatMethod := getStatsMethod98
 	if c.version >= 10.2 {
 		getStatMethod = getStatsMethod102
 	}
+	glog.V(1).Infof("Getting stats using claymore API '%s'", getStatMethod)
 	resp, err := c.send(getStatMethod, true)
 	if err != nil {
 		return nil, err
 	}
+	glog.V(1).Infof("claymore response: %+v", resp)
 	stats := &Statistics{
 		Version: resp.Result[0],
 	}
@@ -189,42 +192,45 @@ func (c *ClaymoreClient) Stats() (*Statistics, error) {
 	stats.AltInvalidShares = int(miningInfo[2])
 	stats.AltPoolSwitches = int(miningInfo[3])
 
-	gpuEthAccepted, err := parseIntFromSeparatedString(resp.Result[9], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu eth accepted from %s: %s", resp.Result[9], err)
-	}
-	stats.MainGpuShares = gpuEthAccepted
-	gpuEthRejected, err := parseIntFromSeparatedString(resp.Result[10], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu eth rejected from %s: %s", resp.Result[10], err)
-	}
-	stats.MainGpuRejectedShares = gpuEthRejected
-	gpuEthInvalid, err := parseIntFromSeparatedString(resp.Result[11], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu gpu eth invalid from %s: %s", resp.Result[11], err)
-	}
-	stats.MainGpuInvalidShares = gpuEthInvalid
-	gpuAltAccepted, err := parseIntFromSeparatedString(resp.Result[12], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu alt accepted from %s: %s", resp.Result[12], err)
-	}
-	stats.AltGpuShares = gpuAltAccepted
-	gpuAltRejected, err := parseIntFromSeparatedString(resp.Result[13], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu alt rejected from %s: %s", resp.Result[13], err)
-	}
-	stats.AltGpuRejectedShares = gpuAltRejected
-	gpuAltInvalid, err := parseIntFromSeparatedString(resp.Result[14], ";")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse gpu alt invalid from %s: %s", resp.Result[14], err)
-	}
-	stats.AltGpuInvalidShares = gpuAltInvalid
-	if c.ps != nil {
-		powerStats, err := c.ps.State()
+	// Add ability to also use claymore-xmr miner... it seems to only have a length of 8
+	if len(resp.Result) > 9 {
+		gpuEthAccepted, err := parseIntFromSeparatedString(resp.Result[9], ";")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse gpu eth accepted from %s: %s", resp.Result[9], err)
 		}
-		stats.PowerState = powerStats
+		stats.MainGpuShares = gpuEthAccepted
+		gpuEthRejected, err := parseIntFromSeparatedString(resp.Result[10], ";")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gpu eth rejected from %s: %s", resp.Result[10], err)
+		}
+		stats.MainGpuRejectedShares = gpuEthRejected
+		gpuEthInvalid, err := parseIntFromSeparatedString(resp.Result[11], ";")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gpu gpu eth invalid from %s: %s", resp.Result[11], err)
+		}
+		stats.MainGpuInvalidShares = gpuEthInvalid
+		gpuAltAccepted, err := parseIntFromSeparatedString(resp.Result[12], ";")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gpu alt accepted from %s: %s", resp.Result[12], err)
+		}
+		stats.AltGpuShares = gpuAltAccepted
+		gpuAltRejected, err := parseIntFromSeparatedString(resp.Result[13], ";")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gpu alt rejected from %s: %s", resp.Result[13], err)
+		}
+		stats.AltGpuRejectedShares = gpuAltRejected
+		gpuAltInvalid, err := parseIntFromSeparatedString(resp.Result[14], ";")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse gpu alt invalid from %s: %s", resp.Result[14], err)
+		}
+		stats.AltGpuInvalidShares = gpuAltInvalid
+		if c.ps != nil {
+			powerStats, err := c.ps.State()
+			if err != nil {
+				return nil, err
+			}
+			stats.PowerState = powerStats
+		}
 	}
 	glog.V(3).Infof("[%s] Stats: %+v", c.IP(), stats)
 	return stats, nil
